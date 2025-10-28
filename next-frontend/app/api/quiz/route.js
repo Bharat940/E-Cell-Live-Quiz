@@ -2,7 +2,6 @@ import { connectDB } from "@/lib/db";
 import Quiz from "@/models/Quiz";
 import Question from "@/models/Question";
 
-
 export async function GET() {
   try {
     await connectDB();
@@ -18,17 +17,24 @@ export async function GET() {
 
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { title, description = "", adminKey } = body;
-
+    const { title, description = "", adminKey } = await req.json();
     if (adminKey !== process.env.ADMIN_KEY)
       return Response.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
+    if (!title || title.trim().length < 3) {
+      return Response.json(
+        { success: false, error: "Invalid title" },
+        { status: 400 }
+      );
+    }
 
     await connectDB();
-    const quiz = await Quiz.create({ title, description });
+    const quiz = await Quiz.create({
+      title: title.trim(),
+      description: description?.trim() ?? "",
+    });
     return Response.json({ success: true, data: quiz });
   } catch (err) {
     return Response.json(
@@ -40,28 +46,36 @@ export async function POST(req) {
 
 export async function PUT(req) {
   try {
-    const body = await req.json();
-    const { quizId, title, description, isLive, adminKey } = body;
-
-    if (adminKey !== process.env.ADMIN_KEY)
+    const { quizId, title, description, isLive, adminKey } = await req.json();
+    if (adminKey !== process.env.ADMIN_KEY) {
       return Response.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
+    }
 
     await connectDB();
 
     const updates = {};
-    if (typeof title === "string") updates.title = title;
-    if (typeof description === "string") updates.description = description;
-    if (typeof isLive === "boolean") updates.isLive = isLive;
+    if (typeof title === "string") {
+      updates.title = title.trim();
+    }
+    if (typeof description === "string") {
+      updates.description = description.trim();
+    }
+    if (typeof isLive === "boolean") {
+      updates.isLive = isLive;
+      if (isLive) updates.startedAt = new Date();
+      else updates.currentQuestionIndex = 0;
+    }
 
     const quiz = await Quiz.findByIdAndUpdate(quizId, updates, { new: true });
-    if (!quiz)
+    if (!quiz) {
       return Response.json(
         { success: false, error: "Quiz not found" },
         { status: 404 }
       );
+    }
 
     return Response.json({ success: true, data: quiz });
   } catch (err) {
@@ -74,9 +88,7 @@ export async function PUT(req) {
 
 export async function DELETE(req) {
   try {
-    const body = await req.json();
-    const { quizId, adminKey } = body;
-
+    const { quizId, adminKey } = await req.json();
     if (adminKey !== process.env.ADMIN_KEY) {
       return Response.json(
         { success: false, error: "Unauthorized" },

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import QuizList from "../components/QuizList";
 import QuestionList from "../components/QuestionList";
 import AddQuestionForm from "../components/AddQuestionForm";
+import { socket } from "@/lib/socket";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function AdminPage() {
   const [quizzes, setQuizzes] = useState([]);
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [leaderboardOn, setLeaderboardOn] = useState(false);
 
   useEffect(() => {
     const storedKey = localStorage.getItem("adminKey");
@@ -54,6 +56,38 @@ export default function AdminPage() {
     } else alert(data.error);
   };
 
+  const startQuiz = (quizId) => {
+    socket.emit("admin_start_quiz", { quizId, adminKey });
+    alert("🚀 Quiz started!");
+  };
+
+  const nextQuestion = (quizId, index) => {
+    socket.emit("admin_next_question", { quizId, index, adminKey });
+  };
+
+  const toggleLeaderboard = (quizId) => {
+    socket.emit("admin_toggle_leaderboard", {
+      quizId,
+      adminKey,
+      on: !leaderboardOn,
+    });
+    setLeaderboardOn(!leaderboardOn);
+  };
+
+  useEffect(() => {
+    if (isVerified) {
+      fetchQuizzes();
+    }
+
+    socket.on("quiz_start", (d) => console.log("Quiz started:", d));
+    socket.on("leaderboard_visibility", (d) => console.log("Leaderboard:", d));
+
+    return () => {
+      socket.off("quiz_start");
+      socket.off("leaderboard_visibility");
+    };
+  }, [isVerified]);
+
   if (!isVerified)
     return (
       <div className="flex justify-center items-center h-screen bg-gray-900">
@@ -64,12 +98,11 @@ export default function AdminPage() {
     );
 
   return (
-    <div className="p-6 max-w-4xl mx-auto bg-gray-900 min-h-screen text-gray-100">
+    <div className="p-6 max-w-5xl mx-auto bg-gray-900 min-h-screen text-gray-100">
       <h1 className="text-4xl font-bold mb-8 text-center text-white">
         Admin Panel
       </h1>
 
-      {/* Create New Quiz */}
       <div className="mb-8 bg-gray-800 shadow-md rounded-lg p-6">
         <h2 className="text-2xl font-semibold mb-4 text-white">
           Create New Quiz
@@ -95,7 +128,6 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* Quiz List */}
       <QuizList
         quizzes={quizzes}
         fetchQuizzes={fetchQuizzes}
@@ -103,6 +135,10 @@ export default function AdminPage() {
         setQuestions={setQuestions}
         fetchQuestions={fetchQuestions}
         adminKey={adminKey}
+        startQuiz={startQuiz}
+        nextQuestion={nextQuestion}
+        toggleLeaderboard={toggleLeaderboard}
+        leaderboardOn={leaderboardOn}
       />
 
       {selectedQuiz && (

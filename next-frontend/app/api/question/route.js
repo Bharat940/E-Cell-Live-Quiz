@@ -15,6 +15,39 @@ export async function POST(req) {
       );
     }
 
+    if (!questionText || questionText.trim().length === 0) {
+      return Response.json(
+        { success: false, error: "Question text is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!Array.isArray(options) || options.length < 2) {
+      return Response.json(
+        { success: false, error: "At least two options are required" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof correctIndex !== "number" ||
+      correctIndex < 0 ||
+      correctIndex > options.length
+    ) {
+      return Response.json(
+        { success: false, error: "Invalid correct option index" },
+        { status: 400 }
+      );
+    }
+
+    const tl = Number(timeLimit ?? 30);
+    if (Number.isNaN(tl) || tl <= 0) {
+      return Response.json(
+        { success: false, error: "Invalid time limit" },
+        { status: 400 }
+      );
+    }
+
     await connectDB();
 
     const quiz = await Quiz.findById(quizId);
@@ -27,10 +60,10 @@ export async function POST(req) {
 
     const question = await Question.create({
       quizId,
-      questionText,
-      options,
+      questionText: questionText.trim(),
+      options: options.map((o) => `${o}`.trim()),
       correctIndex,
-      timeLimit,
+      timeLimit: tl,
     });
 
     return Response.json({ success: true, data: question });
@@ -83,19 +116,29 @@ export async function PUT(req) {
     await connectDB();
 
     const updates = {};
-    if (typeof questionText === "string") {
-      updates.questionText = questionText;
+    if (typeof questionText === "string" && questionText.trim()) {
+      updates.questionText = questionText.trim();
     }
     if (Array.isArray(options) && options.length >= 2) {
-      updates.options = options;
+      updates.options = options.map((o) => `${o}`.trim());
     }
-
     if (typeof correctIndex === "number") {
       updates.correctIndex = correctIndex;
     }
-
     if (typeof timeLimit === "number") {
       updates.timeLimit = timeLimit;
+    }
+
+    if (updates.options && typeof updates.correctIndex === "number") {
+      if (
+        updates.correctIndex < 0 ||
+        updates.correctIndex >= updates.options.length
+      ) {
+        return Response.json(
+          { success: false, error: "Invalid correct option index" },
+          { status: 400 }
+        );
+      }
     }
 
     const question = await Question.findByIdAndUpdate(questionId, updates, {
