@@ -6,6 +6,7 @@ import { socket } from "@/lib/socket";
 export default function QuizPageClient({ quizCode }) {
   const [participantName, setParticipantName] = useState("");
   const [participantId, setParticipantId] = useState(null);
+  const [quizInfo, setQuizInfo] = useState(null);
   const [quizStarted, setQuizStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -14,10 +15,7 @@ export default function QuizPageClient({ quizCode }) {
   const [score, setScore] = useState(0);
 
   const handleJoin = async () => {
-    if (!participantName.trim()) {
-      alert("Please enter your name");
-      return;
-    }
+    if (!participantName.trim()) return alert("Please enter your name");
 
     try {
       const res = await fetch("/api/participant/join", {
@@ -29,6 +27,12 @@ export default function QuizPageClient({ quizCode }) {
       if (!data.success) throw new Error(data.error || "Join failed");
 
       setParticipantId(data.data.participantId);
+      setQuizInfo({
+        title: data.data.title,
+        description: data.data.description,
+      });
+      setQuizStarted(data.data.isLive);
+
       socket.emit("join_quiz", {
         quizId: data.data.quizId,
         participantId: data.data.participantId,
@@ -40,7 +44,6 @@ export default function QuizPageClient({ quizCode }) {
 
   const handleAnswer = (optionIndex) => {
     if (answerLocked) return;
-    setAnswerLocked(true);
     setAnswerSelected(optionIndex);
 
     socket.emit("submit_answer", {
@@ -52,7 +55,10 @@ export default function QuizPageClient({ quizCode }) {
   };
 
   useEffect(() => {
+    if (!participantId) return;
+
     socket.on("quiz_start", () => setQuizStarted(true));
+
     socket.on("new_question", (q) => {
       setCurrentQuestion(q);
       setAnswerLocked(false);
@@ -63,6 +69,7 @@ export default function QuizPageClient({ quizCode }) {
         setTimeLeft((t) => {
           if (t <= 1) {
             clearInterval(timer);
+            setAnswerLocked(true);
             return 0;
           }
           return t - 1;
@@ -82,18 +89,18 @@ export default function QuizPageClient({ quizCode }) {
 
   if (!participantId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
-        <h1 className="text-2xl font-bold">Join Quiz</h1>
+      <div className="min-h-screen flex flex-col items-center justify-center space-y-4 bg-gray-50">
+        <h1 className="text-3xl font-bold text-gray-800">Join Quiz</h1>
         <input
           type="text"
           placeholder="Enter your name"
-          className="border p-2 rounded"
+          className="border border-gray-300 p-2 rounded w-64 focus:outline-none focus:ring focus:ring-blue-200"
           value={participantName}
           onChange={(e) => setParticipantName(e.target.value)}
         />
         <button
           onClick={handleJoin}
-          className="bg-blue-500 text-white px-4 py-2 rounded"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow"
         >
           Join
         </button>
@@ -101,39 +108,59 @@ export default function QuizPageClient({ quizCode }) {
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center space-y-4">
-      {!quizStarted && (
-        <p className="text-lg text-gray-500">Waiting for quiz to start...</p>
-      )}
+  if (!quizStarted || !currentQuestion) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-center px-4">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          {quizInfo?.title || "Waiting for quiz"}
+        </h1>
+        <p className="text-gray-600 mb-6">{quizInfo?.description}</p>
+        <p className="text-gray-500 animate-pulse">
+          Waiting for quiz to start...
+        </p>
+      </div>
+    );
+  }
 
-      {quizStarted && currentQuestion && (
-        <div className="w-full max-w-lg text-center">
-          <h2 className="text-xl font-bold mb-4">
-            {currentQuestion.questionText}
-          </h2>
-          <div className="flex flex-col gap-2">
-            {currentQuestion.options.map((opt, i) => (
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-lg bg-white shadow-lg rounded-2xl p-6 text-center">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          {currentQuestion.questionText}
+        </h2>
+
+        <div className="flex flex-col gap-3">
+          {currentQuestion.options.map((opt, i) => {
+            const isSelected = answerSelected === i;
+            return (
               <button
                 key={i}
                 disabled={answerLocked}
                 onClick={() => handleAnswer(i)}
-                className={`p-2 rounded border ${
-                  answerSelected === i
-                    ? "bg-blue-500 text-white"
-                    : "bg-white hover:bg-gray-100"
-                }`}
+                className={`w-full p-3 rounded-lg border text-gray-800 font-medium transition-all duration-200
+                  ${
+                    isSelected
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-gray-100 hover:bg-blue-100 border-gray-300"
+                  }
+                  ${answerLocked && !isSelected ? "opacity-60" : ""}
+                `}
               >
                 {opt}
               </button>
-            ))}
-          </div>
-          <p className="mt-3 text-gray-600">
-            Time Left: <b>{timeLeft}s</b>
-          </p>
-          <p className="mt-2">Score: {score}</p>
+            );
+          })}
         </div>
-      )}
+
+        <div className="mt-6 text-gray-600 flex justify-between text-sm">
+          <span>
+            Time Left: <b>{timeLeft}s</b>
+          </span>
+          <span>
+            Score: <b>{score}</b>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

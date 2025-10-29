@@ -5,7 +5,6 @@ import Participant from "@/models/Participant";
 export async function POST(req) {
   try {
     const body = await req.json();
-    console.log("BODY RECEIVED:", body); // ✅ add this line
 
     const { quizCode, name } = body;
     if (!quizCode || !name.trim()) {

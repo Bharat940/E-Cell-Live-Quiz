@@ -44,6 +44,10 @@ export default function QuestionList({ questions, fetchQuestions, adminKey }) {
     } else alert(data.error);
   };
 
+  if (!Array.isArray(questions)) {
+    return <p>No questions found.</p>;
+  }
+
   return (
     <div className="mb-6">
       <h2 className="text-2xl font-semibold mb-4 text-white">Questions</h2>
