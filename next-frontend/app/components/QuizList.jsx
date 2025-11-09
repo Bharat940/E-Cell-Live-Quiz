@@ -110,7 +110,7 @@ export default function QuizList({
                 </button>
 
                 <button
-                  onClick={() => router.push(`/presentation/${quiz._id}`)}
+                  onClick={() => router.push(`admin/presentation/${quiz._id}`)}
                   className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded"
                 >
                   Presentation

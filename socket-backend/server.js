@@ -34,12 +34,12 @@ console.log("✅ Connected to MongoDB:", mongoose.connection.name);
 const quizState = new Map();
 
 io.on("connection", (socket) => {
-  socket.on("join_quiz", async ({ quizId, participantId }) => {
-    if (!quizId || !participantId) {
-      return;
-    }
+  console.log("New socket connected:", socket.id);
 
+  socket.on("join_quiz", async ({ quizId, participantId }) => {
     if (
+      !quizId ||
+      !participantId ||
       !mongoose.Types.ObjectId.isValid(quizId) ||
       !mongoose.Types.ObjectId.isValid(participantId)
     ) {
@@ -49,58 +49,126 @@ io.on("connection", (socket) => {
     socket.join(quizId);
     await Participant.findByIdAndUpdate(participantId, { socketId: socket.id });
     socket.emit("joined", { ok: true });
+
+    const state = quizState.get(quizId);
+    if (state?.questionId) {
+      const q = await Question.findById(state.questionId);
+      if (q) {
+        const remaining = Math.max(
+          0,
+          Math.floor(
+            (state.timeLimitMs - (Date.now() - state.startedAt)) / 1000
+          )
+        );
+        socket.emit("new_question", {
+          _id: q._id.toString(),
+          questionText: q.questionText,
+          options: q.options,
+          timeLimit: remaining,
+        });
+      }
+    }
   });
 
-  socket.on("admin_start_quiz", async ({ quizId, adminKey }) => {
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return;
+  // Admin joins
+  socket.on("join_admin", ({ quizId }) => {
+    socket.join(`admin_${quizId}`);
+    const state = quizState.get(quizId);
+    if (state?.questionId) {
+      Question.findById(state.questionId).then((q) => {
+        if (q) {
+          const remaining = Math.max(
+            0,
+            Math.floor(
+              (state.timeLimitMs - (Date.now() - state.startedAt)) / 1000
+            )
+          );
+          socket.emit("new_question", {
+            _id: q._id.toString(),
+            questionText: q.questionText,
+            options: q.options,
+            timeLimit: remaining,
+          });
+        }
+      });
     }
+  });
 
-    await Quiz.findByIdAndUpdate(quizId, {
-      isLive: true,
-      startedAt: new Date(),
-      currentQuestionIndex: 0,
-    });
+  // Presentation joins
+  socket.on("join_presentation", ({ quizId }) => {
+    socket.join(`presentation_${quizId}`);
+    const state = quizState.get(quizId);
+    if (state && state.questionId) {
+      socket.emit("quiz_start", { quizId });
+    } else {
+      socket.emit("quiz_end", { quizId });
+    }
+  });
 
-    const prev = quizState.get(quizId) || {};
+  // Start quiz
+  socket.on("admin_start_quiz", async ({ quizId, adminKey }) => {
+    if (adminKey !== process.env.ADMIN_KEY) return;
+
+    const quiz = await Quiz.findByIdAndUpdate(
+      quizId,
+      { isLive: true, startedAt: new Date(), currentQuestionIndex: 0 },
+      { new: true }
+    );
+    if (!quiz) return;
 
     quizState.set(quizId, {
-      ...prev,
       questionId: null,
       startedAt: null,
       timeLimitMs: 0,
-      leaderboardOn: prev.leaderboardOn ?? false,
+      leaderboardOn: false,
     });
 
     io.to(quizId).emit("quiz_start", { quizId });
-  });
+    io.to(`presentation_${quizId}`).emit("quiz_start", { quizId });
 
-  socket.on("admin_toggle_leaderboard", ({ quizId, adminKey, on }) => {
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return;
+    const questions = await Question.find({ quizId }).sort({ createdAt: 1 });
+    if (questions.length > 0) {
+      const q = questions[0];
+      await Quiz.findByIdAndUpdate(quizId, { currentQuestionIndex: 1 });
+
+      const payload = {
+        _id: q._id.toString(),
+        questionText: q.questionText,
+        options: q.options,
+        timeLimit: q.timeLimit,
+      };
+
+      quizState.set(quizId, {
+        questionId: q._id.toString(),
+        startedAt: Date.now(),
+        timeLimitMs: q.timeLimit * 1000,
+        leaderboardOn: false,
+      });
+
+      io.to(quizId).emit("new_question", payload);
+      io.to(`admin_${quizId}`).emit("new_question", payload);
+
+      setTimeout(() => {
+        io.to(quizId).emit("answer_window_close", {
+          questionId: q._id.toString(),
+        });
+      }, q.timeLimit * 1000);
     }
-
-    const prev = quizState.get(quizId) || {};
-
-    quizState.set(quizId, { ...prev, leaderboardOn: !!on });
-    io.to(quizId).emit("leaderboard_visibility", { on: !!on });
   });
 
+  // Next question
   socket.on("admin_next_question", async ({ quizId, index, adminKey }) => {
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return;
-    }
+    if (adminKey !== process.env.ADMIN_KEY) return;
 
     const quiz = await Quiz.findById(quizId);
-    if (!quiz) {
-      return;
-    }
+    if (!quiz) return;
 
     const questions = await Question.find({ quizId }).sort({ createdAt: 1 });
     const i = typeof index === "number" ? index : quiz.currentQuestionIndex;
     const q = questions[i];
     if (!q) {
       io.to(quizId).emit("quiz_end", { quizId });
+      io.to(`presentation_${quizId}`).emit("quiz_end", { quizId });
       return;
     }
 
@@ -116,68 +184,68 @@ io.on("connection", (socket) => {
       questionId: q._id.toString(),
       startedAt: Date.now(),
       timeLimitMs: q.timeLimit * 1000,
-      leaderboardOn: quizState.get(quizId)?.leaderboardOn ?? false,
     });
 
     io.to(quizId).emit("new_question", payload);
+    io.to(`admin_${quizId}`).emit("new_question", payload);
 
-    setTimeout(
-      () =>
-        io
-          .to(quizId)
-          .emit("answer_window_close", { questionId: q._id.toString() }),
-      q.timeLimit * 1000
-    );
+    setTimeout(() => {
+      io.to(quizId).emit("answer_window_close", {
+        questionId: q._id.toString(),
+      });
+    }, q.timeLimit * 1000);
   });
 
+  // Submit answer
   socket.on(
     "submit_answer",
     async ({ quizId, participantId, questionId, selectedOption }) => {
-      const state = quizState.get(quizId);
-      if (!state || state.questionId !== questionId) {
-        return;
-      }
+      try {
+        const state = quizState.get(quizId);
+        if (!state || state.questionId !== questionId) return;
 
-      const elapsedMs = Date.now() - state.startedAt;
-      if (elapsedMs > state.timeLimitMs) {
-        return;
-      }
+        const elapsedMs = Date.now() - state.startedAt;
+        if (elapsedMs > state.timeLimitMs) return;
 
-      const q = await Question.findById(questionId);
-      if (!q) {
-        return;
-      }
+        const q = await Question.findById(questionId);
+        if (!q) return;
 
-      const correct = Number(selectedOption) === q.correctIndex;
-      const remain = Math.max(0, state.timeLimitMs - elapsedMs);
-      const bonus = Math.round((remain / state.timeLimitMs) * 5000);
+        const correct = Number(selectedOption) === q.correctIndex;
 
-      let delta = correct ? 1000 + bonus : 0;
+        // Balanced scoring
+        const remain = Math.max(0, state.timeLimitMs - elapsedMs);
+        const bonus = Math.round((remain / state.timeLimitMs) * 20); // Max +20
+        const delta = correct ? 100 + bonus : 0;
 
-      const updated = await Participant.findByIdAndUpdate(
-        participantId,
-        {
-          $inc: { score: delta },
-          $push: {
-            answers: {
-              questionId: q._id,
-              selectedOption,
-              correct,
-              answerTimeMs: elapsedMs,
+        const participantObjectId = new mongoose.Types.ObjectId(participantId);
+
+        const updated = await Participant.findOneAndUpdate(
+          { _id: participantObjectId },
+          {
+            $inc: { score: delta },
+            $push: {
+              answers: {
+                questionId: q._id,
+                selectedOption,
+                correct,
+                answerTime: elapsedMs,
+              },
             },
           },
-        },
-        { new: true }
-      ).lean();
+          { new: true }
+        ).lean();
 
-      io.to(socket.id).emit("answer_result", {
-        correct,
-        scoreDelta: delta,
-        totalScore: updated?.score ?? 0,
-      });
+        if (!updated) {
+          console.warn("⚠️ No participant found for", participantId);
+          return;
+        }
 
-      const st = quizState.get(quizId);
-      if (st?.leaderboardOn) {
+        io.to(socket.id).emit("answer_result", {
+          correct,
+          scoreDelta: delta,
+          totalScore: updated.score,
+        });
+
         const top = await Participant.find({ quizId })
           .sort({ score: -1, updatedAt: 1 })
           .limit(10)
@@ -185,11 +253,51 @@ io.on("connection", (socket) => {
           .lean();
 
         io.to(quizId).emit("update_leaderboard", { top });
+        io.to(`admin_${quizId}`).emit("update_leaderboard", { top });
+        io.to(`presentation_${quizId}`).emit("update_leaderboard", { top });
+      } catch (err) {
+        console.error("❌ Error in submit_answer:", err.message);
       }
     }
   );
 
-  socket.on("disconnect", () => {});
+  // Toggle leaderboard
+  socket.on("admin_toggle_leaderboard", ({ quizId, adminKey, on }) => {
+    if (adminKey !== process.env.ADMIN_KEY) return;
+    const prev = quizState.get(quizId) || {};
+    quizState.set(quizId, { ...prev, leaderboardOn: !!on });
+
+    io.to(quizId).emit("leaderboard_visibility", { on: !!on });
+    io.to(`presentation_${quizId}`).emit("leaderboard_visibility", {
+      on: !!on,
+    });
+  });
+
+  // End quiz
+  socket.on("quiz_end", async ({ quizId }) => {
+    await Quiz.findByIdAndUpdate(quizId, {
+      isLive: false,
+      currentQuestionIndex: 0,
+    });
+
+    const top = await Participant.find({ quizId })
+      .sort({ score: -1, updatedAt: 1 })
+      .limit(10)
+      .select("name score")
+      .lean();
+
+    io.to(quizId).emit("quiz_end", { quizId });
+    io.to(`presentation_${quizId}`).emit("quiz_end", { quizId });
+    io.to(quizId).emit("update_leaderboard", { top });
+    io.to(`admin_${quizId}`).emit("update_leaderboard", { top });
+    io.to(`presentation_${quizId}`).emit("update_leaderboard", { top });
+
+    quizState.delete(quizId);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ Socket disconnected:", socket.id);
+  });
 });
 
 process.on("SIGINT", async () => {

@@ -40,7 +40,7 @@ export default function QuestionList({ questions, fetchQuestions, adminKey }) {
     if (data.success) {
       setEditingQuestionId(null);
       fetchQuestions();
-      alert("✅ Question updated!");
+      alert("Question updated!");
     } else alert(data.error);
   };
 
