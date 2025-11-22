@@ -136,6 +136,8 @@ io.on("connection", (socket) => {
         questionText: q.questionText,
         options: q.options,
         timeLimit: q.timeLimit,
+        index: 0,
+        total: questions.length,
       };
 
       quizState.set(quizId, {
@@ -178,6 +180,8 @@ io.on("connection", (socket) => {
       questionText: q.questionText,
       options: q.options,
       timeLimit: q.timeLimit,
+      index: i,
+      total: questions.length,
     };
 
     quizState.set(quizId, {

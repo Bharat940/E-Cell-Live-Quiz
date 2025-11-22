@@ -59,7 +59,7 @@ export default function PresentationClient({ quizId }) {
       <div className="min-h-screen flex flex-col items-center justify-center bg-black text-gray-300 text-2xl font-semibold">
         <p>⚡ Quiz is not live yet</p>
         <p className="text-gray-500 text-lg mt-2">
-          Waiting for admin to start...
+          Waiting for quiz to start...
         </p>
       </div>
     );

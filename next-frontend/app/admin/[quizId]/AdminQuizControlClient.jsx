@@ -15,6 +15,13 @@ export default function AdminQuizControlClient({ quizId }) {
   const [timer, setTimer] = useState(0);
   const timerRef = useRef(null);
 
+  // 🚀 NEW STATE — detects last question
+  const [hasNextQuestion, setHasNextQuestion] = useState(false);
+
+  // Fix hydration
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => setIsClient(true), []);
+
   useEffect(() => {
     const key = localStorage.getItem("adminKey");
     if (key) setAdminKey(key);
@@ -35,6 +42,7 @@ export default function AdminQuizControlClient({ quizId }) {
     socket.on("quiz_end", () => {
       setQuizLive(false);
       setCurrentQuestion(null);
+      setHasNextQuestion(false);
       clearInterval(timerRef.current);
       setTimer(0);
     });
@@ -42,6 +50,13 @@ export default function AdminQuizControlClient({ quizId }) {
     // When a new question appears
     socket.on("new_question", (q) => {
       setCurrentQuestion(q);
+
+      if (q.index === q.total - 1) {
+        setHasNextQuestion(false);
+      } else {
+        setHasNextQuestion(true);
+      }
+
       setTimer(q.timeLimit || 30);
 
       clearInterval(timerRef.current);
@@ -78,13 +93,14 @@ export default function AdminQuizControlClient({ quizId }) {
       socket.emit("quiz_end", { quizId });
       setQuizLive(false);
       setCurrentQuestion(null);
+      setHasNextQuestion(false);
       clearInterval(timerRef.current);
       setTimer(0);
     }
   };
 
   const handleNextQuestion = () => {
-    if (!quizLive) return;
+    if (!quizLive || !hasNextQuestion) return;
     socket.emit("admin_next_question", { quizId, adminKey });
   };
 
@@ -111,10 +127,10 @@ export default function AdminQuizControlClient({ quizId }) {
   return (
     <div className="min-h-screen bg-gray-950 text-white p-8 flex flex-col items-center space-y-6">
       <h1 className="text-3xl font-bold text-cyan-400 drop-shadow-lg">
-        🧑‍🏫 Admin Quiz Control
+        Admin Quiz Control
       </h1>
 
-      {/* --- QR Code --- */}
+      {/* QR Code */}
       <button
         onClick={() => setShowQR(!showQR)}
         className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded transition shadow"
@@ -122,7 +138,8 @@ export default function AdminQuizControlClient({ quizId }) {
         {showQR ? "Hide QR Code" : "Show QR Code"}
       </button>
 
-      {showQR && typeof window !== "undefined" && (
+      {/* Safe QR */}
+      {showQR && isClient && (
         <div className="flex flex-col items-center space-y-2">
           <QRCode
             value={`${window.location.origin}/quiz/${quizId}`}
@@ -136,19 +153,18 @@ export default function AdminQuizControlClient({ quizId }) {
         </div>
       )}
 
-      {/* --- Current Question & Timer --- */}
+      {/* Question Panel */}
       {currentQuestion ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-xl p-6 text-center w-full max-w-xl transition-all duration-300">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-xl p-6 text-center w-full max-w-xl">
           <h3 className="text-xl font-semibold text-cyan-400 mb-3">
             Current Question
           </h3>
-          <p className="text-lg text-gray-200 mb-3 font-medium">
+          <p className="text-lg text-gray-200 font-medium mb-3">
             {currentQuestion.questionText}
           </p>
 
-          {/* Timer Text */}
-          <p className="text-sm text-gray-400 mb-2">
-            ⏱ Time Remaining:{" "}
+          <p className="text-sm text-gray-400">
+            Time Left:{" "}
             <span
               className={`font-semibold ${
                 timer > 10
@@ -162,8 +178,7 @@ export default function AdminQuizControlClient({ quizId }) {
             </span>
           </p>
 
-          {/* Progress Bar */}
-          <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden mt-2">
+          <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden mt-3">
             <div
               className={`h-full ${getTimerBarColor()} transition-all duration-1000`}
               style={{
@@ -178,17 +193,17 @@ export default function AdminQuizControlClient({ quizId }) {
         </div>
       ) : quizLive ? (
         <p className="text-yellow-400 animate-pulse font-medium">
-          Waiting for next question...
+          Waiting for next question…
         </p>
       ) : (
         <p className="text-gray-400 font-medium">Quiz not started yet.</p>
       )}
 
-      {/* --- Controls --- */}
+      {/* Controls */}
       <div className="flex flex-wrap justify-center gap-4 mt-4">
         <button
           onClick={handleStartOrEndQuiz}
-          className={`px-6 py-2 rounded font-semibold transition shadow ${
+          className={`px-6 py-2 rounded font-semibold shadow ${
             quizLive
               ? "bg-red-600 hover:bg-red-700"
               : "bg-green-600 hover:bg-green-700"
@@ -196,13 +211,17 @@ export default function AdminQuizControlClient({ quizId }) {
         >
           {quizLive ? "End Quiz" : "Start Quiz"}
         </button>
-        <button
-          onClick={handleNextQuestion}
-          className="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded font-semibold disabled:opacity-50 shadow"
-          disabled={!quizLive}
-        >
-          Next Question
-        </button>
+
+        {/* Next Question */}
+        {quizLive && hasNextQuestion && (
+          <button
+            onClick={handleNextQuestion}
+            className="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded font-semibold shadow"
+          >
+            Next Question
+          </button>
+        )}
+
         <button
           onClick={() => handleToggleLeaderboard(!leaderboardVisible)}
           className="bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded font-semibold shadow"
@@ -211,7 +230,7 @@ export default function AdminQuizControlClient({ quizId }) {
         </button>
       </div>
 
-      {/* --- Optional embedded leaderboard --- */}
+      {/* Optional embedded leaderboard */}
       {leaderboardVisible && <LeaderboardPanel leaderboard={leaderboard} />}
     </div>
   );

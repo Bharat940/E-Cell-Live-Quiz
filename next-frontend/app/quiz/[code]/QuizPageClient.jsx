@@ -215,7 +215,7 @@ export default function QuizPageClient({ quizCode }) {
 
         <div className="flex flex-col gap-3">
           {currentQuestion.options.map((opt, i) => {
-            const isSelected = answerSelected === i;
+            const isSelected = answerSelected !== null && answerSelected === i;
 
             // After submit, color the selected option:
             //    - green if correct
@@ -238,11 +238,11 @@ export default function QuizPageClient({ quizCode }) {
                 key={i}
                 disabled={answerLocked}
                 onClick={() => setAnswerSelected(i)}
-                className={`w-full p-3 rounded-lg font-medium transition-all duration-200 border ${
-                  answerLocked ? "" : baseClasses
-                } ${answerLocked ? postSubmitClasses : ""} ${
-                  answerLocked ? "opacity-90" : ""
-                }`}
+                className={`w-full p-3 rounded-lg font-medium transition-all duration-200 border 
+                  ${!answerLocked ? baseClasses : ""}
+                  ${answerLocked && isSelected ? postSubmitClasses : ""}
+                  ${answerLocked ? "opacity-90" : ""}
+                `}
               >
                 {opt}
               </button>

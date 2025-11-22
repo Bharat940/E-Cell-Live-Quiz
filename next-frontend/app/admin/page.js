@@ -54,12 +54,12 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">🧑‍🏫 Admin Dashboard</h1>
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         <button
           onClick={() => setShowCreateForm((p) => !p)}
           className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded shadow"
         >
-          {showCreateForm ? "Cancel" : "➕ Create Quiz"}
+          {showCreateForm ? "Cancel" : "Create Quiz"}
         </button>
       </div>
 
