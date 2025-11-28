@@ -21,6 +21,24 @@ export default function PresentationClient({ quizId }) {
   };
 
   useEffect(() => {
+    // Check initial quiz status
+    const checkQuizStatus = async () => {
+      try {
+        const res = await fetch(`/api/quiz?_id=${quizId}`);
+        const data = await res.json();
+        if (data.success && data.data) {
+          setQuizLive(data.data.isLive);
+          if (data.data.isLive) {
+            fetchLeaderboard();
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check quiz status:", err);
+      }
+    };
+
+    checkQuizStatus();
+
     // Join the new presentation room
     socket.emit("join_presentation", { quizId });
 
@@ -65,7 +83,7 @@ export default function PresentationClient({ quizId }) {
     );
   }
 
-  if (visible && leaderboard.length === 0 && quizLive) {
+  if (quizLive && leaderboard.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-gray-300 text-2xl font-semibold">
         Waiting for participants 🕒
@@ -73,7 +91,7 @@ export default function PresentationClient({ quizId }) {
     );
   }
 
-  if (!visible && quizLive) {
+  if (!visible && quizLive && leaderboard.length > 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black text-gray-400 italic text-2xl">
         Leaderboard hidden by admin 👀

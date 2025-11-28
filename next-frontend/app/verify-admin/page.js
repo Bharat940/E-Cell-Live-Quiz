@@ -1,25 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function VerifyAdminPage() {
   const [key, setKey] = useState("");
   const router = useRouter();
 
-  useEffect(() => {
-    const storedKey = localStorage.getItem("adminKey");
-    if (storedKey === process.env.NEXT_PUBLIC_ADMIN_KEY) {
-      router.push("/admin");
-    }
-  }, [router]);
+  const handleSubmit = async () => {
+    const res = await fetch("/api/verify-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
 
-  const handleSubmit = () => {
-    if (key === process.env.NEXT_PUBLIC_ADMIN_KEY) {
-      localStorage.setItem("adminKey", key);
+    const data = await res.json();
+
+    if (data.success) {
       router.push("/admin");
     } else {
-      alert("Invalid Admin Key!");
+      alert("Invalid Admin Key");
     }
   };
 

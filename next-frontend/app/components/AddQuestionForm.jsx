@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "react-toastify";
 
 export default function AddQuestionForm({ quizId, fetchQuestions, adminKey }) {
   const [questionText, setQuestionText] = useState("");
@@ -10,7 +11,7 @@ export default function AddQuestionForm({ quizId, fetchQuestions, adminKey }) {
 
   const addQuestion = async () => {
     if (correctIndex === null) {
-      alert("Please select the correct option!");
+      toast.error("Please select the correct option!");
       return;
     }
     const res = await fetch("/api/question", {
@@ -27,12 +28,12 @@ export default function AddQuestionForm({ quizId, fetchQuestions, adminKey }) {
     });
     const data = await res.json();
     if (data.success) {
-      alert("✅ Question added!");
+      toast.success("✅ Question added!");
       setQuestionText("");
       setOptions(["", "", "", ""]);
       setCorrectIndex(null);
       fetchQuestions();
-    } else alert(data.error);
+    } else toast.error(data.error);
   };
 
   return (

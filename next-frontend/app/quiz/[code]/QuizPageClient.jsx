@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { socket } from "@/lib/socket";
+import { toast } from "react-toastify";
 
 export default function QuizPageClient({ quizCode }) {
   const [participantName, setParticipantName] = useState("");
@@ -28,7 +29,10 @@ export default function QuizPageClient({ quizCode }) {
   const [lastAnswerCorrect, setLastAnswerCorrect] = useState(null);
 
   const handleJoin = async () => {
-    if (!participantName.trim()) return alert("Please enter your name");
+    if (!participantName.trim()) {
+      toast.error("Please enter your name");
+      return;
+    }
 
     try {
       const res = await fetch("/api/participant/join", {
@@ -54,7 +58,7 @@ export default function QuizPageClient({ quizCode }) {
         participantId: data.data.participantId,
       });
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message || "Failed to join quiz");
     }
   };
 
@@ -207,68 +211,125 @@ export default function QuizPageClient({ quizCode }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 text-white px-4">
-      <div className="w-full max-w-lg bg-gray-900 border border-gray-800 shadow-xl rounded-2xl p-6 text-center">
-        <h2 className="text-2xl font-semibold text-cyan-400 mb-6">
-          {currentQuestion.questionText}
-        </h2>
-
-        <div className="flex flex-col gap-3">
-          {currentQuestion.options.map((opt, i) => {
-            const isSelected = answerSelected !== null && answerSelected === i;
-
-            // After submit, color the selected option:
-            //    - green if correct
-            //    - red if wrong
-            //    - DO NOT reveal the correct option if user was wrong
-            let postSubmitClasses = "";
-            if (answerLocked && isSelected && lastAnswerCorrect !== null) {
-              postSubmitClasses =
-                lastAnswerCorrect === true
-                  ? "bg-green-600 border-green-500 text-white"
-                  : "bg-red-600 border-red-500 text-white";
-            }
-
-            const baseClasses = isSelected
-              ? "bg-cyan-600 border-cyan-500 text-white shadow-lg"
-              : "bg-gray-800 hover:bg-gray-700 border-gray-700 text-gray-200";
-
-            return (
-              <button
-                key={i}
-                disabled={answerLocked}
-                onClick={() => setAnswerSelected(i)}
-                className={`w-full p-3 rounded-lg font-medium transition-all duration-200 border 
-                  ${!answerLocked ? baseClasses : ""}
-                  ${answerLocked && isSelected ? postSubmitClasses : ""}
-                  ${answerLocked ? "opacity-90" : ""}
-                `}
-              >
-                {opt}
-              </button>
-            );
-          })}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white px-4 py-8">
+      <div className="w-full max-w-2xl">
+        {/* Participant Info Header */}
+        <div className="bg-gray-900/50 backdrop-blur border border-gray-800 rounded-2xl p-4 mb-6 shadow-xl">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-cyan-500/20 rounded-full flex items-center justify-center border border-cyan-500/50">
+                <span className="text-xl">👤</span>
+              </div>
+              <div className="text-left">
+                <p className="text-xs text-gray-400">Participant</p>
+                <p className="text-lg font-bold text-cyan-400">{participantName}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-400">Current Score</p>
+              <p className="text-2xl font-bold text-blue-400">{score}</p>
+            </div>
+          </div>
         </div>
 
-        <button
-          onClick={handleSubmitAnswer}
-          disabled={answerLocked || answerSelected === null}
-          className={`mt-6 w-full py-3 rounded-lg font-semibold transition-all ${
-            answerLocked
-              ? "bg-gray-700 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700 text-white"
-          }`}
-        >
-          {answerLocked ? "Answer Submitted" : "Submit Answer"}
-        </button>
+        {/* Question Card */}
+        <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-cyan-500/30 rounded-2xl shadow-2xl p-6 md:p-8">
+          {/* Question Text */}
+          <div className="mb-6">
+            <h2 className="text-2xl md:text-3xl font-bold text-white leading-relaxed text-center">
+              {currentQuestion.questionText}
+            </h2>
+          </div>
 
-        <div className="mt-6 text-sm flex justify-between text-gray-400">
-          <span>
-            ⏱ Time Left: <b className="text-cyan-400">{timeLeft}s</b>
-          </span>
-          <span>
-            Score: <b className="text-blue-400">{score}</b>
-          </span>
+          {/* Options */}
+          <div className="flex flex-col gap-3 mb-6">
+            {currentQuestion.options.map((opt, i) => {
+              const isSelected = answerSelected !== null && answerSelected === i;
+
+              // After submit, color the selected option:
+              //    - green if correct
+              //    - red if wrong
+              //    - DO NOT reveal the correct option if user was wrong
+              let postSubmitClasses = "";
+              if (answerLocked && isSelected && lastAnswerCorrect !== null) {
+                postSubmitClasses =
+                  lastAnswerCorrect === true
+                    ? "bg-green-600 border-green-500 text-white"
+                    : "bg-red-600 border-red-500 text-white";
+              }
+
+              const baseClasses = isSelected
+                ? "bg-cyan-600 border-cyan-500 text-white shadow-lg scale-105"
+                : "bg-gray-800/50 hover:bg-gray-700 border-gray-700 text-gray-200";
+
+              return (
+                <button
+                  key={i}
+                  disabled={answerLocked}
+                  onClick={() => setAnswerSelected(i)}
+                  className={`w-full p-4 rounded-xl font-medium transition-all duration-200 border text-left
+                    ${!answerLocked ? baseClasses : ""}
+                    ${answerLocked && isSelected ? postSubmitClasses : ""}
+                    ${answerLocked && !isSelected ? "bg-gray-800/30 border-gray-700/50 text-gray-400" : ""}
+                  `}
+                >
+                  <span className="font-semibold text-cyan-400 mr-2">
+                    {String.fromCharCode(65 + i)}.
+                  </span>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Submit Button */}
+          <button
+            onClick={handleSubmitAnswer}
+            disabled={answerLocked || answerSelected === null}
+            className={`w-full py-4 rounded-xl font-semibold text-lg transition-all transform ${answerLocked
+                ? "bg-gray-700 cursor-not-allowed text-gray-400"
+                : answerSelected !== null
+                  ? "bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white shadow-lg hover:scale-105"
+                  : "bg-gray-700 cursor-not-allowed text-gray-500"
+              }`}
+          >
+            {answerLocked ? "✓ Answer Submitted" : "Submit Answer"}
+          </button>
+
+          {/* Timer Section */}
+          <div className="mt-6 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-gray-400 font-medium">⏱ Time Remaining</span>
+              <span
+                className={`text-3xl font-bold tabular-nums ${timeLeft > 10
+                    ? "text-cyan-400"
+                    : timeLeft > 5
+                      ? "text-yellow-400"
+                      : "text-red-500 animate-pulse"
+                  }`}
+              >
+                {timeLeft}s
+              </span>
+            </div>
+
+            {/* Timer Bar */}
+            <div className="h-3 w-full bg-gray-900 rounded-full overflow-hidden shadow-inner">
+              <div
+                className={`h-full transition-all duration-1000 ease-linear shadow-lg ${timeLeft > 10
+                    ? "bg-cyan-500"
+                    : timeLeft > 5
+                      ? "bg-yellow-400"
+                      : "bg-red-500 animate-pulse"
+                  }`}
+                style={{
+                  width: `${currentQuestion?.timeLimit
+                    ? (timeLeft / currentQuestion.timeLimit) * 100
+                    : 0
+                    }%`,
+                }}
+              ></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

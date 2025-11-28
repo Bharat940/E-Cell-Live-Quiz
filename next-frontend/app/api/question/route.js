@@ -1,21 +1,31 @@
 import { connectDB } from "@/lib/db";
 import Question from "@/models/Question";
 import Quiz from "@/models/Quiz";
+import { cookies } from "next/headers";
+
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  const adminKey = cookieStore.get("adminKey")?.value;
+
+  if (adminKey !== process.env.ADMIN_KEY) {
+    return Response.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  return null;
+}
 
 export async function POST(req) {
+  const auth = await requireAdmin();
+  if (auth) return auth;
+
   try {
-    const body = await req.json();
-    const { quizId, questionText, options, correctIndex, timeLimit, adminKey } =
-      body;
+    const { quizId, questionText, options, correctIndex, timeLimit } =
+      await req.json();
 
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    if (!questionText || questionText.trim().length === 0) {
+    if (!questionText?.trim()) {
       return Response.json(
         { success: false, error: "Question text is required" },
         { status: 400 }
@@ -95,23 +105,14 @@ export async function GET(req) {
 }
 
 export async function PUT(req) {
-  try {
-    const body = await req.json();
-    const {
-      questionId,
-      questionText,
-      options,
-      correctIndex,
-      timeLimit,
-      adminKey,
-    } = body;
+  const auth = await requireAdmin();
+  if (auth) {
+    return auth;
+  }
 
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+  try {
+    const { questionId, questionText, options, correctIndex, timeLimit } =
+      await req.json();
 
     await connectDB();
 
@@ -161,21 +162,18 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
-  try {
-    const body = await req.json();
-    const { questionId, adminKey } = body;
+  const auth = await requireAdmin();
+  if (auth) {
+    return auth;
+  }
 
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+  try {
+    const { questionId } = await req.json();
 
     await connectDB();
 
-    const deletedQuestion = await Question.findByIdAndDelete(questionId);
-    if (!deletedQuestion) {
+    const deleted = await Question.findByIdAndDelete(questionId);
+    if (!deleted) {
       return Response.json(
         { success: false, error: "Question not found" },
         { status: 404 }

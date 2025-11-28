@@ -50,6 +50,10 @@ io.on("connection", (socket) => {
     await Participant.findByIdAndUpdate(participantId, { socketId: socket.id });
     socket.emit("joined", { ok: true });
 
+    // Update participant count for admin
+    const count = await Participant.countDocuments({ quizId });
+    io.to(`admin_${quizId}`).emit("participant_count", { count });
+
     const state = quizState.get(quizId);
     if (state?.questionId) {
       const q = await Question.findById(state.questionId);
@@ -71,8 +75,13 @@ io.on("connection", (socket) => {
   });
 
   // Admin joins
-  socket.on("join_admin", ({ quizId }) => {
+  socket.on("join_admin", async ({ quizId }) => {
     socket.join(`admin_${quizId}`);
+
+    // Send initial participant count
+    const count = await Participant.countDocuments({ quizId });
+    socket.emit("participant_count", { count });
+
     const state = quizState.get(quizId);
     if (state?.questionId) {
       Question.findById(state.questionId).then((q) => {
@@ -95,10 +104,12 @@ io.on("connection", (socket) => {
   });
 
   // Presentation joins
-  socket.on("join_presentation", ({ quizId }) => {
+  socket.on("join_presentation", async ({ quizId }) => {
     socket.join(`presentation_${quizId}`);
-    const state = quizState.get(quizId);
-    if (state && state.questionId) {
+
+    // Check if quiz is actually live from database
+    const quiz = await Quiz.findById(quizId);
+    if (quiz && quiz.isLive) {
       socket.emit("quiz_start", { quizId });
     } else {
       socket.emit("quiz_end", { quizId });
@@ -126,37 +137,10 @@ io.on("connection", (socket) => {
     io.to(quizId).emit("quiz_start", { quizId });
     io.to(`presentation_${quizId}`).emit("quiz_start", { quizId });
 
-    const questions = await Question.find({ quizId }).sort({ createdAt: 1 });
-    if (questions.length > 0) {
-      const q = questions[0];
-      await Quiz.findByIdAndUpdate(quizId, { currentQuestionIndex: 1 });
 
-      const payload = {
-        _id: q._id.toString(),
-        questionText: q.questionText,
-        options: q.options,
-        timeLimit: q.timeLimit,
-        index: 0,
-        total: questions.length,
-      };
-
-      quizState.set(quizId, {
-        questionId: q._id.toString(),
-        startedAt: Date.now(),
-        timeLimitMs: q.timeLimit * 1000,
-        leaderboardOn: false,
-      });
-
-      io.to(quizId).emit("new_question", payload);
-      io.to(`admin_${quizId}`).emit("new_question", payload);
-
-      setTimeout(() => {
-        io.to(quizId).emit("answer_window_close", {
-          questionId: q._id.toString(),
-        });
-      }, q.timeLimit * 1000);
-    }
+    // Admin must manually trigger first question by clicking "Next Question"
   });
+
 
   // Next question
   socket.on("admin_next_question", async ({ quizId, index, adminKey }) => {
@@ -168,11 +152,7 @@ io.on("connection", (socket) => {
     const questions = await Question.find({ quizId }).sort({ createdAt: 1 });
     const i = typeof index === "number" ? index : quiz.currentQuestionIndex;
     const q = questions[i];
-    if (!q) {
-      io.to(quizId).emit("quiz_end", { quizId });
-      io.to(`presentation_${quizId}`).emit("quiz_end", { quizId });
-      return;
-    }
+    if (!q) return;
 
     await Quiz.findByIdAndUpdate(quizId, { currentQuestionIndex: i + 1 });
     const payload = {
@@ -297,6 +277,29 @@ io.on("connection", (socket) => {
     io.to(`presentation_${quizId}`).emit("update_leaderboard", { top });
 
     quizState.delete(quizId);
+  });
+
+  // Reset participants
+  socket.on("admin_reset_participants", async ({ quizId, adminKey }) => {
+    if (adminKey !== process.env.ADMIN_KEY) return;
+
+    try {
+      await Participant.deleteMany({ quizId });
+
+      // Broadcast update to admin
+      io.to(`admin_${quizId}`).emit("participant_count", { count: 0 });
+
+      // Clear leaderboard
+      const top = [];
+      io.to(quizId).emit("update_leaderboard", { top });
+      io.to(`admin_${quizId}`).emit("update_leaderboard", { top });
+      io.to(`presentation_${quizId}`).emit("update_leaderboard", { top });
+
+      // Notify admin
+      io.to(`admin_${quizId}`).emit("participants_reset_success");
+    } catch (err) {
+      console.error("Failed to reset participants:", err);
+    }
   });
 
   socket.on("disconnect", () => {

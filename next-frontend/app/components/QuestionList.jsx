@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "react-toastify";
 
 export default function QuestionList({ questions, fetchQuestions, adminKey }) {
   const [editingQuestionId, setEditingQuestionId] = useState(null);
@@ -21,7 +22,7 @@ export default function QuestionList({ questions, fetchQuestions, adminKey }) {
 
   const saveEdits = async (questionId) => {
     if (editedCorrectIndex === null) {
-      alert("Please select the correct option!");
+      toast.error("Please select the correct option!");
       return;
     }
     const res = await fetch("/api/question", {
@@ -40,8 +41,8 @@ export default function QuestionList({ questions, fetchQuestions, adminKey }) {
     if (data.success) {
       setEditingQuestionId(null);
       fetchQuestions();
-      alert("Question updated!");
-    } else alert(data.error);
+      toast.success("Question updated!");
+    } else toast.error(data.error);
   };
 
   if (!Array.isArray(questions)) {

@@ -1,10 +1,43 @@
 import { connectDB } from "@/lib/db";
 import Quiz from "@/models/Quiz";
 import Question from "@/models/Question";
+import { cookies } from "next/headers";
 
-export async function GET() {
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  const adminKey = cookieStore.get("adminKey")?.value;
+
+  if (adminKey !== process.env.ADMIN_KEY) {
+    return Response.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  return null;
+}
+
+export async function GET(req) {
   try {
     await connectDB();
+    
+    // Check if requesting a single quiz by ID
+    const { searchParams } = new URL(req.url);
+    const quizId = searchParams.get('_id');
+    
+    if (quizId) {
+      // Fetch single quiz
+      const quiz = await Quiz.findById(quizId).lean();
+      if (!quiz) {
+        return Response.json(
+          { success: false, error: "Quiz not found" },
+          { status: 404 }
+        );
+      }
+      return Response.json({ success: true, data: quiz });
+    }
+    
+    // Fetch all quizzes
     const quizzes = await Quiz.find().sort({ createdAt: -1 }).lean();
     return Response.json({ success: true, data: quizzes });
   } catch (err) {
@@ -16,13 +49,14 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const auth = await requireAdmin();
+  if (auth) {
+    return auth;
+  }
+
   try {
-    const { title, description = "", adminKey } = await req.json();
-    if (adminKey !== process.env.ADMIN_KEY)
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    const { title, description = "" } = await req.json();
+
     if (!title || title.trim().length < 3) {
       return Response.json(
         { success: false, error: "Invalid title" },
@@ -45,31 +79,27 @@ export async function POST(req) {
 }
 
 export async function PUT(req) {
+  const auth = await requireAdmin();
+  if (auth) {
+    return auth;
+  }
+
   try {
-    const { quizId, title, description, isLive, adminKey } = await req.json();
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const { quizId, title, description, isLive } = await req.json();
 
     await connectDB();
 
     const updates = {};
-    if (typeof title === "string") {
-      updates.title = title.trim();
-    }
-    if (typeof description === "string") {
-      updates.description = description.trim();
-    }
+    if (title) updates.title = title.trim();
+    if (description) updates.description = description.trim();
     if (typeof isLive === "boolean") {
       updates.isLive = isLive;
-      if (isLive) updates.startedAt = new Date();
-      else updates.currentQuestionIndex = 0;
+      updates.startedAt = isLive ? new Date() : undefined;
+      if (!isLive) updates.currentQuestionIndex = 0;
     }
 
     const quiz = await Quiz.findByIdAndUpdate(quizId, updates, { new: true });
+
     if (!quiz) {
       return Response.json(
         { success: false, error: "Quiz not found" },
@@ -87,14 +117,11 @@ export async function PUT(req) {
 }
 
 export async function DELETE(req) {
+  const auth = await requireAdmin();
+  if (auth) return auth;
+
   try {
-    const { quizId, adminKey } = await req.json();
-    if (adminKey !== process.env.ADMIN_KEY) {
-      return Response.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const { quizId } = await req.json();
 
     await connectDB();
 

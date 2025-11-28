@@ -2,14 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "react-toastify";
 
 export default function HomePage() {
   const [quizCode, setQuizCode] = useState("");
   const router = useRouter();
 
   const handleJoin = () => {
-    if (quizCode.trim().length !== 6)
-      return alert("Enter a valid 6-character quiz code!");
+    if (quizCode.trim().length !== 6) {
+      toast.error("Enter a valid 6-character quiz code!");
+      return;
+    }
     router.push(`/quiz/${quizCode.toUpperCase()}`);
   };
 
